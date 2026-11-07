@@ -1320,6 +1320,50 @@ class TestManualCallbackProvider:
         assert "--oauth-manual-callback" not in argv
 
 
+class TestClientMetadataUrl:
+    """--oauth-client-metadata-url: CIMD client_id for servers without DCR."""
+
+    URL = "https://example.github.io/mcp2cli/client-metadata.json"
+
+    def test_provider_carries_metadata_url(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(mcp2cli, "OAUTH_DIR", tmp_path / "oauth")
+        provider = mcp2cli.build_oauth_provider(
+            "https://example.com/mcp",
+            redirect_uri="http://127.0.0.1:19891/callback",
+            client_metadata_url=self.URL,
+        )
+        assert provider.context.client_metadata_url == self.URL
+
+    @pytest.mark.parametrize(
+        "url", ["http://example.com/meta.json", "https://example.com/", "not a url"]
+    )
+    def test_invalid_url_rejected(self, url):
+        with pytest.raises(SystemExit):
+            mcp2cli.build_oauth_provider(
+                "https://example.com/mcp", client_metadata_url=url
+            )
+
+    def test_exclusive_with_client_id(self):
+        with pytest.raises(SystemExit):
+            mcp2cli.build_oauth_provider(
+                "https://example.com/mcp",
+                client_id="abc",
+                client_metadata_url=self.URL,
+            )
+
+    def test_baked_config_round_trips_flag(self):
+        argv = mcp2cli._baked_to_argv(
+            {
+                "source_type": "mcp",
+                "source": "https://example.com/mcp",
+                "oauth": True,
+                "oauth_client_metadata_url": self.URL,
+            }
+        )
+        i = argv.index("--oauth-client-metadata-url")
+        assert argv[i + 1] == self.URL
+
+
 class TestManualCallbackEndToEnd:
     """The pasted URL must actually complete the PKCE exchange (issue #71)."""
 
