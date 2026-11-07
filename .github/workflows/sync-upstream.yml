@@ -1,0 +1,49 @@
+# Fork-only: merge knowsuchagency/mcp2cli main into this fork's main weekly.
+# Merge, never rebase, so the fork's own commits keep their SHAs.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    if: github.repository != 'knowsuchagency/mcp2cli'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Merge upstream main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch https://github.com/knowsuchagency/mcp2cli.git main
+          git merge --no-edit FETCH_HEAD
+
+      - name: Test
+        run: |
+          uv venv --python 3.13
+          uv pip install -e ".[test]"
+          npm install -g @toon-format/cli
+          .venv/bin/python -m pytest -q
+
+      - run: git push origin main
+
+      - name: Open an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Upstream sync failed $(date -u +%F)" \
+            --body "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Merge knowsuchagency/mcp2cli main into main by hand (merge, never rebase), fix, push."

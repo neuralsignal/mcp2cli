@@ -1212,6 +1212,7 @@ def build_oauth_provider(
     redirect_uri: str | None = None,
     flow: str = "auto",
     manual_callback: bool = False,
+    client_metadata_url: str | None = None,
 ) -> "httpx.Auth":
     """Build an OAuth provider for HTTP connections.
 
@@ -1234,7 +1235,29 @@ def build_oauth_provider(
     manual_callback skips the local callback server entirely and reads the
     redirect URL from stdin instead, for hosts where the browser runs on a
     different machine (issue #71).
+
+    client_metadata_url is an HTTPS URL to an OAuth Client ID Metadata
+    Document (CIMD). When the auth server advertises
+    ``client_id_metadata_document_supported`` the URL is used as the
+    client_id instead of dynamic client registration.
     """
+    if client_metadata_url is not None:
+        from mcp.client.auth.utils import is_valid_client_metadata_url
+
+        if client_id:
+            print(
+                "Error: --oauth-client-metadata-url and --oauth-client-id are mutually exclusive.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if not is_valid_client_metadata_url(client_metadata_url):
+            print(
+                "Error: --oauth-client-metadata-url must be an https:// URL with a path, "
+                f"got '{client_metadata_url}'.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     storage = FileTokenStorage(server_url)
 
     use_client_credentials = (
@@ -1550,6 +1573,7 @@ def build_oauth_provider(
         storage=storage,
         redirect_handler=redirect_handler,
         callback_handler=callback_handler,
+        client_metadata_url=client_metadata_url,
     )
 
 
@@ -2655,6 +2679,8 @@ def _baked_to_argv(config: dict) -> list[str]:
         argv += ["--oauth-flow", config["oauth_flow"]]
     if config.get("oauth_manual_callback"):
         argv.append("--oauth-manual-callback")
+    if config.get("oauth_client_metadata_url"):
+        argv += ["--oauth-client-metadata-url", config["oauth_client_metadata_url"]]
     return argv
 
 
@@ -2713,6 +2739,7 @@ def _bake_create(argv: list[str]) -> None:
     p.add_argument("--oauth-scope", default=None)
     p.add_argument("--oauth-redirect-uri", default=None, metavar="URI")
     p.add_argument("--oauth-manual-callback", action="store_true")
+    p.add_argument("--oauth-client-metadata-url", default=None, metavar="URL")
     p.add_argument(
         "--oauth-flow",
         choices=["auto", "authorization_code", "client_credentials"],
@@ -2781,6 +2808,7 @@ def _bake_create(argv: list[str]) -> None:
         "oauth_redirect_uri": args.oauth_redirect_uri,
         "oauth_flow": args.oauth_flow,
         "oauth_manual_callback": args.oauth_manual_callback,
+        "oauth_client_metadata_url": args.oauth_client_metadata_url,
         "include": [x.strip() for x in args.include.split(",") if x.strip()],
         "exclude": [x.strip() for x in args.exclude.split(",") if x.strip()],
         "methods": [x.strip().upper() for x in args.methods.split(",") if x.strip()],
@@ -4987,6 +5015,13 @@ def _build_main_parser() -> argparse.ArgumentParser:
              "Overrides the default http://127.0.0.1:<random-port>/callback.",
     )
     pre.add_argument(
+        "--oauth-client-metadata-url",
+        default=None,
+        metavar="URL",
+        help="HTTPS URL of an OAuth Client ID Metadata Document, used as the client_id "
+             "on servers that support CIMD instead of Dynamic Client Registration.",
+    )
+    pre.add_argument(
         "--oauth-flow",
         choices=["auto", "authorization_code", "client_credentials"],
         default="auto",
@@ -5080,7 +5115,10 @@ def _setup_oauth(pre_args):
     Returns oauth_provider or None.  Exits on invalid flag combinations.
     """
     use_oauth = (
-        pre_args.oauth or pre_args.oauth_client_id or pre_args.oauth_client_secret
+        pre_args.oauth
+        or pre_args.oauth_client_id
+        or pre_args.oauth_client_secret
+        or getattr(pre_args, "oauth_client_metadata_url", None)
     )
     if not use_oauth:
         return None
@@ -5134,6 +5172,7 @@ def _setup_oauth(pre_args):
         redirect_uri=pre_args.oauth_redirect_uri,
         flow=flow,
         manual_callback=getattr(pre_args, "oauth_manual_callback", False),
+        client_metadata_url=getattr(pre_args, "oauth_client_metadata_url", None),
     )
 
 

@@ -99,6 +99,22 @@ on. That page will fail to load — nothing is listening on the loopback port �
 expected; only its address matters, because it carries the `code` and `state` parameters.
 PKCE and state verification are unchanged, so paste the URL unmodified.
 
+#### Servers without Dynamic Client Registration — Client ID Metadata Documents
+
+Some servers advertise `client_id_metadata_document_supported` and accept an HTTPS URL as
+the `client_id` instead of offering Dynamic Client Registration (CIMD). Host a client
+metadata JSON document whose `client_id` is its own URL and whose `redirect_uris` list the
+callback you will use, then pass both:
+
+```bash
+mcp2cli --mcp https://mcp.undermind.ai/mcp --oauth \
+  --oauth-client-metadata-url https://example.github.io/mcp2cli/client-metadata.json \
+  --oauth-redirect-uri http://127.0.0.1:33418/callback --list
+```
+
+The redirect URI must match one listed in the document exactly, so pin it with
+`--oauth-redirect-uri`. When the server does not advertise CIMD, mcp2cli falls back to DCR.
+
 ### Secrets from environment or files
 
 Sensitive values (`--auth-header` values, `--oauth-client-id`, `--oauth-client-secret`) support
@@ -357,6 +373,8 @@ Options:
   --oauth-scope SCOPE     OAuth scope(s) to request
   --oauth-manual-callback Print the auth URL and read the redirect from stdin
                           (for hosts with no reachable browser)
+  --oauth-client-metadata-url URL
+                          CIMD document URL used as client_id (servers without DCR)
   --cache-key KEY         Custom cache key
   --cache-ttl SECONDS     Cache TTL (default: 3600)
   --refresh               Bypass cache
